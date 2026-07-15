@@ -7,7 +7,7 @@ export default function SettingsPage() {
       <motion.h2 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-lg font-bold text-text-primary mb-4">
         Settings
       </motion.h2>
-      <div className="glass rounded-2xl p-6 max-w-2xl">
+      <div className="glass rounded-2xl p-6 max-w-4xl">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
             <SettingsIcon className="w-5 h-5 text-primary" />

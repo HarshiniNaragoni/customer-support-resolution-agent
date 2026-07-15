@@ -24,7 +24,7 @@ export default function AnalyticsPage() {
         Analytics
       </motion.h2>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
           { label: "Resolution Rate", value: total ? `${Math.round((resolved / total) * 100)}%` : "0%", icon: TrendingUp, color: "#22C55E" },
           { label: "Escalation Rate", value: total ? `${Math.round((escalated / total) * 100)}%` : "0%", icon: Activity, color: "#EF4444" },

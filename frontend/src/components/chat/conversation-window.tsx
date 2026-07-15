@@ -237,10 +237,10 @@ export function ConversationWindow() {
               <Bot className="w-8 h-8 text-primary" />
             </div>
             <h3 className="text-lg font-semibold text-text-primary mb-1">CSRA AI Assistant</h3>
-            <p className="text-sm text-text-secondary max-w-xs">
+            <p className="text-sm text-text-secondary max-w-sm">
               Ask me anything about orders, refunds, policies, or account issues.
             </p>
-            <div className="flex flex-wrap gap-2 mt-6 max-w-md">
+            <div className="flex flex-wrap gap-2 mt-6">
               {["Where is my order?", "I need a refund", "Reset my password", "Talk to a human"].map((q) => (
                 <button
                   key={q}

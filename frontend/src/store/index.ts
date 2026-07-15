@@ -12,6 +12,8 @@ interface AppState {
   setSidebarOpen: (open: boolean) => void;
   bottomDrawerOpen: boolean;
   toggleBottomDrawer: () => void;
+  inspectorOpen: boolean;
+  toggleInspector: () => void;
   lastAgentResponse: AgentInvokeResponse | null;
   setLastAgentResponse: (r: AgentInvokeResponse | null) => void;
 }
@@ -28,6 +30,8 @@ export const useAppStore = create<AppState>((set) => ({
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   bottomDrawerOpen: false,
   toggleBottomDrawer: () => set((s) => ({ bottomDrawerOpen: !s.bottomDrawerOpen })),
+  inspectorOpen: false,
+  toggleInspector: () => set((s) => ({ inspectorOpen: !s.inspectorOpen })),
   lastAgentResponse: null,
   setLastAgentResponse: (r) => set({ lastAgentResponse: r }),
 }));

@@ -25,7 +25,7 @@ export default function OrdersPage() {
       {!isError && (
         <div className="glass rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
-            <div className="grid grid-cols-[140px_1fr_140px_100px_100px_120px] gap-4 px-5 py-3 border-b border-glass-border text-xs font-medium text-text-secondary uppercase tracking-wider min-w-[700px]">
+            <div className="grid grid-cols-[minmax(100px,1fr)_minmax(0,2fr)_minmax(120px,1fr)_auto_auto_auto] gap-4 px-5 py-3 border-b border-glass-border text-xs font-medium text-text-secondary uppercase tracking-wider">
               <span>Order ID</span>
               <span>Product</span>
               <span>Customer</span>
@@ -36,7 +36,7 @@ export default function OrdersPage() {
             <ScrollArea className="max-h-[calc(100vh-200px)]">
               {isLoading ? (
                 Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="grid grid-cols-[140px_1fr_140px_100px_100px_120px] gap-4 px-5 py-3 border-b border-glass-border/50 min-w-[700px]">
+                  <div key={i} className="grid grid-cols-[minmax(100px,1fr)_minmax(0,2fr)_minmax(120px,1fr)_auto_auto_auto] gap-4 px-5 py-3 border-b border-glass-border/50">
                     <Skeleton className="h-4 w-24" />
                     <Skeleton className="h-4 w-32" />
                     <Skeleton className="h-4 w-20" />
@@ -52,7 +52,7 @@ export default function OrdersPage() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: i * 0.02 }}
-                    className="grid grid-cols-[140px_1fr_140px_100px_100px_120px] gap-4 px-5 py-3 border-b border-glass-border/50 hover:bg-white/[0.02] transition-colors min-w-[700px]"
+                    className="grid grid-cols-[minmax(100px,1fr)_minmax(0,2fr)_minmax(120px,1fr)_auto_auto_auto] gap-4 px-5 py-3 border-b border-glass-border/50 hover:bg-white/[0.02] transition-colors"
                   >
                     <span className="text-xs font-mono text-primary truncate">{o.order_id.slice(0, 12)}</span>
                     <span className="text-sm text-text-primary">{o.product_name}</span>
