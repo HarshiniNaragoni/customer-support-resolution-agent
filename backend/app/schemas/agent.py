@@ -1,0 +1,22 @@
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
+
+class AgentInvokeRequest(BaseModel):
+    customer_message: str = Field(..., min_length=1, max_length=5000, description="Customer's message")
+    customer_email: str = Field(default="", max_length=255)
+    customer_name: str = Field(default="", max_length=255)
+    ticket_id: str = Field(default="", description="Existing ticket ID to associate with")
+
+
+class AgentInvokeResponse(BaseModel):
+    ticket_id: str
+    resolution: str
+    intent: str
+    confidence: float
+    escalated: bool
+    tool_used: str
+    citations: List[Dict[str, Any]] = Field(default_factory=list)

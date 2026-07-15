@@ -1,0 +1,82 @@
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+eggs/
+*.whl
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ============================================================
+# Backend - Runtime data (regenerated on startup)
+# ============================================================
+backend/data/
+backend/logs/
+backend/startup_error.txt
+backend/startup_output.txt
+
+# ============================================================
+# Environment files (contain secrets)
+# ============================================================
+.env
+.env.local
+.env.*.local
+!backend/.env.example
+
+# ============================================================
+# Node / Frontend
+# ============================================================
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# ============================================================
+# IDE / Editor
+# ============================================================
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ============================================================
+# OS
+# ============================================================
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.tmp
+
+# ============================================================
+# Logs
+# ============================================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
