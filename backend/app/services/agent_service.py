@@ -70,6 +70,8 @@ class AgentService:
             "escalated": final_state.escalated,
             "tool_used": final_state.selected_tool,
             "citations": final_state.citations,
+            "prompt_injection_detected": final_state.prompt_injection_detected,
+            "injection_patterns": final_state.injection_patterns,
         }
 
     def _create_ticket(
@@ -113,6 +115,12 @@ class AgentService:
         tool_calls_info = state.selected_tool
         if state.tool_output:
             tool_calls_info = f"{state.selected_tool}: {str(state.tool_output)[:200]}"
+
+        if state.prompt_injection_detected:
+            tool_calls_info = (
+                f"BLOCKED | Patterns: {', '.join(state.injection_patterns[:5])} | "
+                f"Action: Blocked | Pipeline: Security Path"
+            )
 
         log = AuditLogModel(
             id=str(uuid.uuid4()),

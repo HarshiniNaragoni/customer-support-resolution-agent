@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
 
@@ -20,3 +20,5 @@ class AgentInvokeResponse(BaseModel):
     escalated: bool
     tool_used: str
     citations: List[Dict[str, Any]] = Field(default_factory=list)
+    prompt_injection_detected: bool = False
+    injection_patterns: List[str] = Field(default_factory=list)

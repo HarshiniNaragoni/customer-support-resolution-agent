@@ -13,6 +13,7 @@ from app.agents.prompts import (
     OUT_OF_SCOPE_RESPONSE,
     AMBIGUOUS_RESPONSE,
     NO_POLICY_RESPONSE,
+    INJECTION_SAFE_RESPONSE,
 )
 from app.agents.security import (
     detect_prompt_injection,
@@ -116,6 +117,7 @@ def _classify_intent_llm(message: str) -> Tuple[str, float, str]:
         valid_intents = {
             "order_status", "refund_request", "account_help", "password_reset",
             "legal_issue", "account_closure", "out_of_scope", "ambiguous",
+            "prompt_injection",
         }
         if intent not in valid_intents:
             intent = "ambiguous"
@@ -128,27 +130,87 @@ def _classify_intent_llm(message: str) -> Tuple[str, float, str]:
         return _classify_intent_fallback(message)
 
 
-def intent_detection_node(state: AgentState) -> Dict[str, Any]:
-    """Classifies customer intent using LLM with keyword fallback."""
-    logger.info("Node: intent_detection | Input: %s", state.customer_message[:100])
+def prompt_injection_check_node(state: AgentState) -> Dict[str, Any]:
+    """First pipeline step: detect prompt injection before any processing.
+
+    If injection is detected, sets flag and escalation reason. Downstream
+    nodes (retrieve_documents, select_tool) will skip all work. The graph
+    routes directly to generate_resolution to produce a safe response.
+    """
+    logger.info("Node: prompt_injection_check | Message: %s", state.customer_message[:100])
 
     injection_detected, injection_patterns = detect_prompt_injection(
         state.customer_message
     )
 
     if injection_detected:
-        logger.warning("Prompt injection detected in message.")
+        logger.warning(
+            "Prompt injection BLOCKED at first pipeline step. Patterns: %s",
+            injection_patterns,
+        )
         return {
-            "intent": "out_of_scope",
-            "confidence": 0.95,
+            "prompt_injection_detected": True,
+            "injection_patterns": injection_patterns,
+            "escalated": True,
+            "escalation_reason": "Prompt injection attempt detected",
+            "intent": "prompt_injection",
+            "confidence": 0.05,
+            "intent_reasoning": "Prompt injection attempt detected - blocked before intent classification",
+            "history": state.history + [{
+                "node": "prompt_injection_check",
+                "injection": True,
+                "patterns": injection_patterns,
+            }],
+        }
+
+    return {
+        "history": state.history + [{
+            "node": "prompt_injection_check",
+            "injection": False,
+        }],
+    }
+
+
+def intent_detection_node(state: AgentState) -> Dict[str, Any]:
+    """Classifies customer intent using LLM with keyword fallback."""
+    logger.info("Node: intent_detection | Input: %s", state.customer_message[:100])
+
+    # If the dedicated injection check node already detected injection, pass through
+    if state.prompt_injection_detected:
+        logger.info("Intent detection: injection already detected by upstream node.")
+        return {
+            "intent": "prompt_injection",
+            "confidence": 0.05,
+            "intent_reasoning": "Prompt injection attempt detected - blocked before intent classification",
+            "prompt_injection_detected": True,
+            "injection_patterns": state.injection_patterns,
+            "escalated": True,
+            "escalation_reason": "Prompt injection attempt detected",
+            "history": state.history + [{
+                "node": "intent_detection",
+                "intent": "prompt_injection",
+                "injection": True,
+                "skipped": True,
+            }],
+        }
+
+    injection_detected, injection_patterns = detect_prompt_injection(
+        state.customer_message
+    )
+
+    if injection_detected:
+        logger.warning("Prompt injection detected in intent_detection node.")
+        return {
+            "intent": "prompt_injection",
+            "confidence": 0.05,
             "intent_reasoning": "Prompt injection attempt detected",
             "prompt_injection_detected": True,
             "injection_patterns": injection_patterns,
             "escalated": True,
-            "escalation_reason": "Prompt injection attempt",
+            "escalation_reason": "Prompt injection attempt detected",
             "history": state.history + [{
                 "node": "intent_detection",
-                "intent": "out_of_scope",
+                "intent": "prompt_injection",
                 "injection": True,
             }],
         }
@@ -214,6 +276,19 @@ def make_retrieve_documents_node(db: Session | None = None):
     def retrieve_documents_node(state: AgentState) -> Dict[str, Any]:
         logger.info("Node: retrieve_documents | Intent: %s", state.intent)
 
+        if state.prompt_injection_detected or state.intent == "prompt_injection":
+            logger.info("Retrieve documents: SKIPPED (prompt injection detected).")
+            return {
+                "retrieved_documents": [],
+                "citations": [],
+                "history": state.history + [{
+                    "node": "retrieve_documents",
+                    "count": 0,
+                    "skipped": True,
+                    "reason": "prompt_injection",
+                }],
+            }
+
         if state.intent in ("out_of_scope", "ambiguous"):
             return {
                 "retrieved_documents": [],
@@ -254,6 +329,19 @@ def make_select_tool_node(db: Session | None = None):
 
     def select_tool_node(state: AgentState) -> Dict[str, Any]:
         logger.info("Node: select_tool | Intent: %s", state.intent)
+
+        if state.prompt_injection_detected or state.intent == "prompt_injection":
+            logger.info("Select tool: SKIPPED (prompt injection detected).")
+            return {
+                "selected_tool": "",
+                "tool_input": {},
+                "tool_output": {},
+                "history": state.history + [{
+                    "node": "select_tool",
+                    "tool": None,
+                    "reason": "prompt_injection",
+                }],
+            }
 
         if state.intent in ("out_of_scope", "ambiguous", "legal_issue", "account_closure"):
             return {
@@ -358,6 +446,15 @@ def generate_resolution_node(state: AgentState) -> Dict[str, Any]:
     """Generates a resolution using LLM with retrieved context and tool output."""
     logger.info("Node: generate_resolution | Intent: %s | Tool: %s", state.intent, state.selected_tool)
 
+    # Injection check MUST come before out_of_scope (injection sets intent="prompt_injection")
+    if state.prompt_injection_detected or state.intent == "prompt_injection":
+        resolution = INJECTION_SAFE_RESPONSE
+        return {
+            "resolution": resolution,
+            "final_response": resolution,
+            "history": state.history + [{"node": "generate_resolution", "type": "injection_response"}],
+        }
+
     if state.intent == "out_of_scope":
         resolution = OUT_OF_SCOPE_RESPONSE
         return {
@@ -372,18 +469,6 @@ def generate_resolution_node(state: AgentState) -> Dict[str, Any]:
             "resolution": resolution,
             "final_response": resolution,
             "history": state.history + [{"node": "generate_resolution", "type": "ambiguous"}],
-        }
-
-    if state.prompt_injection_detected:
-        resolution = (
-            "I noticed your message may contain unusual instructions. "
-            "I'm here to help with your customer support needs. "
-            "How can I assist you with your order, refund, or account?"
-        )
-        return {
-            "resolution": resolution,
-            "final_response": resolution,
-            "history": state.history + [{"node": "generate_resolution", "type": "injection_response"}],
         }
 
     resolution = _generate_with_llm(state)

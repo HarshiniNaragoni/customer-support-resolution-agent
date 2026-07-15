@@ -60,6 +60,8 @@ export interface AgentInvokeResponse {
   escalated: boolean;
   tool_used: string;
   citations: Record<string, unknown>[];
+  prompt_injection_detected: boolean;
+  injection_patterns: string[];
 }
 
 export interface HealthResponse {
@@ -76,7 +78,8 @@ export type IntentType =
   | "legal_issue"
   | "account_closure"
   | "out_of_scope"
-  | "ambiguous";
+  | "ambiguous"
+  | "prompt_injection";
 
 export interface ChatMessage {
   id: string;

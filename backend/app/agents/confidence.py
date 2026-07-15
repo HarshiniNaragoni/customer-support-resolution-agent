@@ -26,6 +26,13 @@ def calculate_confidence(
         Confidence score between 0.0 and 1.0
     """
     score = 0.0
+
+    # Prompt injection: force very low confidence regardless of other signals
+    if prompt_injection_detected:
+        score = 0.05
+        logger.info("Confidence: %.2f (prompt injection detected - forced low)", score)
+        return round(score, 2)
+
     weights = {
         "intent": 0.35,
         "retrieval": 0.30,

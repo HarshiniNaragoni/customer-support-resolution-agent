@@ -41,37 +41,111 @@ Tool results:
 Generate a professional customer support response:"""
 
 PROMPT_INJECTION_PATTERNS = [
+    # Instruction override
     "ignore all instructions",
     "ignore previous instructions",
     "ignore above instructions",
     "ignore your instructions",
+    "ignore these instructions",
+    "ignore the instructions",
     "disregard all instructions",
     "disregard previous instructions",
+    "disregard your instructions",
     "forget all instructions",
     "forget your instructions",
+    "forget previous instructions",
     "new instructions:",
-    "you are now",
-    "from now on",
+    "new instruction:",
     "override instructions",
+    "override your instructions",
     "bypass instructions",
+    "bypass safety",
+    "bypass safeguards",
+    "bypass your safeguards",
+    "disable safeguards",
+    "disable all safeguards",
+    "disable safety",
+    # System prompt extraction
     "reveal system prompt",
+    "reveal the system prompt",
     "show me the system prompt",
+    "show the system prompt",
+    "print system prompt",
+    "print your system prompt",
     "what are your instructions",
     "print your instructions",
+    "display your instructions",
+    "output your instructions",
+    "repeat your instructions",
+    "what is your system prompt",
+    "reveal hidden prompt",
+    "reveal your hidden prompt",
+    "show hidden prompt",
+    # Mode switching
+    "developer mode",
+    "dev mode",
+    "debug mode",
+    "admin mode",
+    "sudo mode",
+    "god mode",
+    "jailbreak",
+    "jailbreak mode",
+    "DAN mode",
+    "DAN prompt",
+    "do anything now",
+    # Identity manipulation
+    "you are now",
+    "from now on",
+    "act as if",
+    "act as another",
+    "act as a different",
+    "pretend you are",
+    "pretend to be",
+    "roleplay as",
+    "roleplay as another",
+    "you are a different",
+    "you are no longer",
+    "you are not ChatGPT",
+    "you are not an AI",
+    "you are not a customer support",
+    # Dangerous actions
     "refund everyone",
     "refund all orders",
+    "refund all customers",
     "delete database",
     "drop database",
     "delete all records",
-    "admin access",
-    "sudo mode",
-    "developer mode",
-    "jailbreak",
-    "DAN mode",
-    "act as if",
-    "pretend you are",
-    "roleplay as",
-    "you are a different",
+    "delete all data",
+    "execute this command",
+    "run this command",
+    # Instruction keywords
+    "new instructions",
+    "override instructions",
+    "execute override",
+]
+
+# Regex patterns for fuzzy matching (catches obfuscation like "i.g.n.o.r.e" or "ign0re")
+PROMPT_INJECTION_REGEX_PATTERNS = [
+    r"ignore\s+(?:all\s+|your\s+)?(?:previous\s+)?instructions",
+    r"disregard\s+(?:all\s+|your\s+)?(?:previous\s+)?instructions",
+    r"forget\s+(?:all\s+|your\s+)?(?:previous\s+)?instructions",
+    r"reveal\s+(?:your\s+)?(?:system\s+prompt|hidden\s+prompt)",
+    r"show\s+(?:me\s+)?(?:the\s+)?(?:system\s+prompt|hidden\s+prompt)",
+    r"print\s+(?:your\s+)?(?:system\s+)?instructions",
+    r"developer\s+mode",
+    r"jailbreak(?:\s+mode)?",
+    r"\bDAN\b(?:\s+mode|\s+prompt)?",
+    r"do\s+anything\s+now",
+    r"bypass\s+(?:safety|safeguards?|instructions?)",
+    r"disable\s+(?:all\s+)?(?:safety|safeguards?)",
+    r"override\s+(?:all\s+|your\s+)?instructions?",
+    r"you\s+are\s+no\s+longer",
+    r"pretend\s+you\s+are",
+    r"act\s+as\s+(?:if|another|a\s+different)",
+    r"roleplay\s+as",
+    r"execute\s+this\s+command",
+    r"delete\s+(?:all\s+)?(?:database|records?|data)",
+    r"drop\s+database",
 ]
 
 ESCALATION_TRIGGERS = [
@@ -115,4 +189,10 @@ AMBIGUOUS_RESPONSE = (
 NO_POLICY_RESPONSE = (
     "I couldn't find a matching company policy for your request. "
     "Let me connect you with a team member who can help."
+)
+
+INJECTION_SAFE_RESPONSE = (
+    "I'm unable to follow requests that attempt to override or manipulate "
+    "my operating instructions. If you have a legitimate customer support "
+    "question about an order, refund, account, or policy, I'll be happy to help."
 )
