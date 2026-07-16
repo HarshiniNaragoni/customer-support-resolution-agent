@@ -67,7 +67,7 @@ function MessageBubble({ msg, onRetry }: { msg: ChatMessage; onRetry?: (text: st
         {r && (
           <div className="flex flex-wrap gap-1 mt-0.5" style={{ justifyContent: isCustomer ? "flex-end" : "flex-start" }}>
             <Badge variant="default" className="text-[9px] px-1.5 py-0">{r.intent.replace(/_/g, " ")}</Badge>
-            <Badge variant={r.confidence >= 0.75 ? "success" : "warning"} className="text-[9px] px-1.5 py-0">{Math.round(r.confidence * 100)}%</Badge>
+            <Badge variant={r.confidence >= 0.55 ? "success" : "warning"} className="text-[9px] px-1.5 py-0">{Math.round(r.confidence * 100)}%</Badge>
             {r.escalated && <Badge variant="danger" className="text-[9px] px-1.5 py-0">Escalated</Badge>}
             {r.tool_used !== "none" && <Badge variant="secondary" className="text-[9px] px-1.5 py-0">{r.tool_used}</Badge>}
           </div>

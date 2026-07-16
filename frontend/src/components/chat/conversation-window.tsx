@@ -100,7 +100,7 @@ function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: (
             <div className="flex flex-wrap gap-1.5">
               <Badge variant="default" className="text-[10px]">{response.intent.replace(/_/g, " ")}</Badge>
               <Badge
-                variant={response.confidence >= 0.75 ? "success" : response.confidence >= 0.5 ? "warning" : "danger"}
+                variant={response.confidence >= 0.55 ? "success" : response.confidence >= 0.3 ? "warning" : "danger"}
                 className="text-[10px]"
               >
                 {Math.round(response.confidence * 100)}% confident

@@ -20,7 +20,7 @@ export default function SettingsPage() {
         <div className="space-y-4">
           {[
             { label: "AI Model", value: "GPT-4o (OpenAI)" },
-            { label: "Confidence Threshold", value: "75%" },
+            { label: "Confidence Threshold", value: "55%" },
             { label: "Max Goodwill Credit", value: "$10.00" },
             { label: "Refund Window", value: "30 days" },
             { label: "RAG Chunk Size", value: "1000 tokens" },

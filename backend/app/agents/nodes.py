@@ -586,7 +586,7 @@ def human_gate_node(state: AgentState) -> Dict[str, Any]:
         escalation_triggers=[state.escalation_reason] if state.escalation_reason else [],
     )
 
-    needs_human = confidence < 0.75 or state.escalated
+    needs_human = confidence < 0.55 or state.escalated
 
     if state.prompt_injection_detected:
         needs_human = True
@@ -602,7 +602,7 @@ def human_gate_node(state: AgentState) -> Dict[str, Any]:
             "node": "human_gate",
             "escalated": needs_human,
             "confidence": confidence,
-            "reason": state.escalation_reason or ("low confidence" if confidence < 0.75 else "normal"),
+            "reason": state.escalation_reason or ("low confidence" if confidence < 0.55 else "normal"),
         }],
     }
 

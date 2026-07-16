@@ -214,7 +214,7 @@ function ExecutionTimeline({ response }: { response: { intent: string; tool_used
                 </p>
               )}
               {step.key === "confidence" && (
-                <p className={cn("text-[10px] mt-0.5", response.confidence >= 0.75 ? "text-success" : "text-warning")}>
+                <p className={cn("text-[10px] mt-0.5", response.confidence >= 0.55 ? "text-success" : "text-warning")}>
                   {Math.round(response.confidence * 100)}%
                 </p>
               )}
