@@ -50,6 +50,7 @@ export interface AgentInvokeRequest {
   customer_email?: string;
   customer_name?: string;
   ticket_id?: string;
+  session_id?: string;
 }
 
 export interface AgentInvokeResponse {
@@ -62,6 +63,10 @@ export interface AgentInvokeResponse {
   citations: Record<string, unknown>[];
   prompt_injection_detected: boolean;
   injection_patterns: string[];
+  reasoning_steps: string[];
+  tool_selection_reasoning: string;
+  needs_clarification: boolean;
+  session_id: string;
 }
 
 export interface HealthResponse {

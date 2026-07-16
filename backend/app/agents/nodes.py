@@ -14,7 +14,12 @@ from app.agents.prompts import (
     AMBIGUOUS_RESPONSE,
     NO_POLICY_RESPONSE,
     INJECTION_SAFE_RESPONSE,
+    REASONING_PROMPT,
+    TOOL_SELECTION_PROMPT,
+    REACT_REASONING_PROMPT,
+    CLARIFICATION_PROMPT,
 )
+from app.agents.conversational import match_conversational
 from app.agents.security import (
     detect_prompt_injection,
     detect_escalation_triggers,
@@ -73,12 +78,12 @@ def _classify_intent_fallback(message: str) -> Tuple[str, float, str]:
             "lawsuit", "attorney", "lawyer", "court", "legal action",
             "sue", "consumer complaint", "bbb", "better business",
         ],
+        "refund_request": [
+            "refund", "money back", "return", "reimburse", "charge back",
+        ],
         "order_status": [
             "order", "package", "delivery", "shipping", "tracking",
             "where is", "late", "missing", "shipped", "dispatched",
-        ],
-        "refund_request": [
-            "refund", "money back", "return", "reimburse", "charge back",
         ],
         "password_reset": [
             "password", "login", "can't sign in", "locked out",
@@ -98,14 +103,15 @@ def _classify_intent_fallback(message: str) -> Tuple[str, float, str]:
     return "ambiguous", 0.4, "No keyword match found"
 
 
-def _classify_intent_llm(message: str) -> Tuple[str, float, str]:
+def _classify_intent_llm(message: str, conversation_history: List[Dict[str, str]] | None = None) -> Tuple[str, float, str]:
     """LLM-based intent classification."""
     llm = _get_llm()
     if not llm:
         return _classify_intent_fallback(message)
 
     try:
-        prompt = INTENT_CLASSIFICATION_PROMPT.format(message=message)
+        history_text = _format_conversation_history(conversation_history or [])
+        prompt = INTENT_CLASSIFICATION_PROMPT.format(message=message, history=history_text)
         response = llm.invoke(prompt)
         raw = response.content if hasattr(response, "content") else str(response)
         parsed = _parse_llm_json(raw)
@@ -171,11 +177,56 @@ def prompt_injection_check_node(state: AgentState) -> Dict[str, Any]:
     }
 
 
+def conversational_check_node(state: AgentState) -> Dict[str, Any]:
+    """Lightweight preprocessing: detect greetings, thanks, goodbye, capabilities.
+
+    If matched, produces a local response and short-circuits the entire pipeline.
+    No LLM, RAG, tools, or human approval involved.
+    """
+    logger.info("Node: conversational_check | Message: %s", state.customer_message[:100])
+
+    result = match_conversational(state.customer_message)
+    if result:
+        category, response = result
+        logger.info("Conversational match: %s", category)
+        return {
+            "intent": f"conversational_{category}",
+            "confidence": 1.0,
+            "intent_reasoning": f"Conversational input: {category}",
+            "resolution": response,
+            "final_response": response,
+            "human_gate_passed": True,
+            "history": state.history + [{
+                "node": "conversational_check",
+                "matched": True,
+                "category": category,
+            }],
+        }
+
+    return {
+        "history": state.history + [{
+            "node": "conversational_check",
+            "matched": False,
+        }],
+    }
+
+
+def _format_conversation_history(history: List[Dict[str, str]]) -> str:
+    """Format conversation history for LLM prompts."""
+    if not history:
+        return "No previous conversation."
+    lines = []
+    for turn in history[-6:]:
+        role = turn.get("role", "customer")
+        content = turn.get("content", "")
+        lines.append(f"{role.capitalize()}: {content}")
+    return "\n".join(lines)
+
+
 def intent_detection_node(state: AgentState) -> Dict[str, Any]:
     """Classifies customer intent using LLM with keyword fallback."""
     logger.info("Node: intent_detection | Input: %s", state.customer_message[:100])
 
-    # If the dedicated injection check node already detected injection, pass through
     if state.prompt_injection_detected:
         logger.info("Intent detection: injection already detected by upstream node.")
         return {
@@ -230,7 +281,9 @@ def intent_detection_node(state: AgentState) -> Dict[str, Any]:
             }],
         }
 
-    intent, certainty, reasoning = _classify_intent_llm(state.customer_message)
+    intent, certainty, reasoning = _classify_intent_llm(
+        state.customer_message, state.conversation_history
+    )
 
     if intent == "ambiguous":
         return {
@@ -268,6 +321,59 @@ def intent_detection_node(state: AgentState) -> Dict[str, Any]:
             "reasoning": reasoning,
         }],
     }
+
+
+def reasoning_analysis_node(state: AgentState) -> Dict[str, Any]:
+    """LLM-based chain-of-thought reasoning about the customer's request."""
+    logger.info("Node: reasoning_analysis | Intent: %s", state.intent)
+
+    if state.prompt_injection_detected or state.intent in ("prompt_injection", "out_of_scope"):
+        return {
+            "reasoning_steps": ["Skipped: security or out-of-scope intent"],
+            "reasoning_quality": 0.0,
+            "history": state.history + [{"node": "reasoning_analysis", "skipped": True}],
+        }
+
+    llm = _get_llm()
+    if not llm:
+        reasoning = f"Intent '{state.intent}' detected with confidence {state.confidence}. Keyword-based classification used."
+        return {
+            "reasoning_steps": [reasoning],
+            "reasoning_quality": 0.5,
+            "history": state.history + [{"node": "reasoning_analysis", "method": "fallback"}],
+        }
+
+    try:
+        history_text = _format_conversation_history(state.conversation_history)
+        prompt = REASONING_PROMPT.format(
+            message=state.customer_message,
+            intent=state.intent,
+            confidence=state.confidence,
+            history=history_text,
+        )
+        response = llm.invoke(prompt)
+        raw = response.content if hasattr(response, "content") else str(response)
+
+        reasoning_steps = [step.strip() for step in raw.split("\n") if step.strip()]
+        reasoning_quality = min(1.0, 0.5 + (len(reasoning_steps) * 0.1))
+
+        return {
+            "reasoning_steps": reasoning_steps[:10],
+            "reasoning_quality": round(reasoning_quality, 2),
+            "history": state.history + [{
+                "node": "reasoning_analysis",
+                "steps_count": len(reasoning_steps),
+                "quality": reasoning_quality,
+            }],
+        }
+    except Exception as exc:
+        logger.warning("LLM reasoning analysis failed: %s", exc)
+        reasoning = f"Intent '{state.intent}' detected with confidence {state.confidence}."
+        return {
+            "reasoning_steps": [reasoning],
+            "reasoning_quality": 0.4,
+            "history": state.history + [{"node": "reasoning_analysis", "error": str(exc)}],
+        }
 
 
 def make_retrieve_documents_node(db: Session | None = None):
@@ -392,6 +498,196 @@ def make_select_tool_node(db: Session | None = None):
         }
 
     return select_tool_node
+
+
+def make_llm_tool_selection_node(db: Session | None = None):
+    """Factory that creates a llm_tool_selection_node bound to a DB session."""
+
+    def llm_tool_selection_node(state: AgentState) -> Dict[str, Any]:
+        """LLM-driven tool selection with rule-based fallback."""
+        logger.info("Node: llm_tool_selection | Intent: %s", state.intent)
+
+        if state.prompt_injection_detected or state.intent in ("prompt_injection", "out_of_scope", "ambiguous", "legal_issue", "account_closure"):
+            return {
+                "selected_tool": "",
+                "tool_input": {},
+                "tool_output": {},
+                "tool_selection_reasoning": "No tool needed for this intent",
+                "history": state.history + [{"node": "llm_tool_selection", "tool": None, "reason": state.intent}],
+            }
+
+        llm = _get_llm()
+        if llm:
+            try:
+                context_text = "\n".join(state.retrieved_documents[:3]) if state.retrieved_documents else "No context available."
+                history_text = _format_conversation_history(state.conversation_history)
+                prompt = TOOL_SELECTION_PROMPT.format(
+                    message=state.customer_message,
+                    intent=state.intent,
+                    context=context_text,
+                    history=history_text,
+                )
+                response = llm.invoke(prompt)
+                raw = response.content if hasattr(response, "content") else str(response)
+                parsed = _parse_llm_json(raw)
+
+                tool_name = parsed.get("tool_name")
+                reasoning = parsed.get("reasoning", "LLM tool selection")
+                tool_input_suggested = parsed.get("tool_input", {})
+
+                valid_tools = {"order_lookup", "refund_eligibility", "password_reset", "apply_credit", "create_ticket", "escalation"}
+                if tool_name and tool_name in valid_tools:
+                    if db:
+                        tool_input = _build_tool_input(state, tool_name)
+                        if tool_input_suggested:
+                            tool_input.update({k: v for k, v in tool_input_suggested.items() if v})
+                        tool_output = execute_tool(tool_name, tool_input, db)
+                        return {
+                            "selected_tool": tool_name,
+                            "tool_input": tool_input,
+                            "tool_output": tool_output,
+                            "tool_selection_reasoning": reasoning,
+                            "history": state.history + [{"node": "llm_tool_selection", "tool": tool_name, "method": "llm"}],
+                        }
+            except Exception as exc:
+                logger.warning("LLM tool selection failed: %s", exc)
+
+        return _rule_based_tool_selection(state, db)
+
+    return llm_tool_selection_node
+
+
+def _rule_based_tool_selection(state: AgentState, db: Session | None = None) -> Dict[str, Any]:
+    """Fallback rule-based tool selection."""
+    if not db:
+        return {
+            "selected_tool": "",
+            "tool_input": {},
+            "tool_output": {},
+            "tool_selection_reasoning": "No DB session available",
+            "history": state.history + [{"node": "llm_tool_selection", "tool": None, "reason": "no_db"}],
+        }
+
+    result = get_tool_for_intent(state.intent, db)
+    if not result:
+        return {
+            "selected_tool": "",
+            "tool_input": {},
+            "tool_output": {},
+            "tool_selection_reasoning": f"Rule-based: no tool for intent '{state.intent}'",
+            "history": state.history + [{"node": "llm_tool_selection", "tool": None, "reason": "no_rule_match"}],
+        }
+
+    tool_name, tool = result
+    tool_input = _build_tool_input(state, tool_name)
+    tool_output = execute_tool(tool_name, tool_input, db)
+
+    return {
+        "selected_tool": tool_name,
+        "tool_input": tool_input,
+        "tool_output": tool_output,
+        "tool_selection_reasoning": f"Rule-based: intent '{state.intent}' -> tool '{tool_name}'",
+        "history": state.history + [{"node": "llm_tool_selection", "tool": tool_name, "method": "rule"}],
+    }
+
+
+def react_reasoning_node(state: AgentState) -> Dict[str, Any]:
+    """Simplified ReAct reasoning: synthesize all gathered information into a response."""
+    logger.info("Node: react_reasoning | Intent: %s | Tool: %s", state.intent, state.selected_tool)
+
+    if state.prompt_injection_detected or state.intent in ("prompt_injection",):
+        return {
+            "resolution": INJECTION_SAFE_RESPONSE,
+            "final_response": INJECTION_SAFE_RESPONSE,
+            "reasoning_steps": state.reasoning_steps + ["Blocked: prompt injection"],
+            "history": state.history + [{"node": "react_reasoning", "type": "injection"}],
+        }
+
+    if state.intent == "out_of_scope":
+        return {
+            "resolution": OUT_OF_SCOPE_RESPONSE,
+            "final_response": OUT_OF_SCOPE_RESPONSE,
+            "reasoning_steps": state.reasoning_steps + ["Out-of-scope: polite refusal"],
+            "history": state.history + [{"node": "react_reasoning", "type": "out_of_scope"}],
+        }
+
+    if state.intent == "ambiguous":
+        clarification = _generate_clarification(state)
+        return {
+            "resolution": clarification,
+            "final_response": clarification,
+            "needs_clarification": True,
+            "clarification_question": clarification,
+            "reasoning_steps": state.reasoning_steps + ["Ambiguous: asked for clarification"],
+            "history": state.history + [{"node": "react_reasoning", "type": "clarification"}],
+        }
+
+    llm = _get_llm()
+    if not llm:
+        resolution = _generate_template(state)
+        return {
+            "resolution": resolution,
+            "final_response": resolution,
+            "reasoning_steps": state.reasoning_steps + ["Template fallback: LLM unavailable"],
+            "history": state.history + [{"node": "react_reasoning", "method": "template"}],
+        }
+
+    try:
+        docs_text = "\n\n".join(state.retrieved_documents[:5]) if state.retrieved_documents else "No relevant documents found."
+        tool_text = json.dumps(state.tool_output, indent=2, default=str) if state.tool_output else "No tool was used."
+        reasoning_text = "\n".join(state.reasoning_steps[-5:]) if state.reasoning_steps else "No prior reasoning."
+        history_text = _format_conversation_history(state.conversation_history)
+
+        prompt = REACT_REASONING_PROMPT.format(
+            message=state.customer_message,
+            intent=state.intent,
+            documents=docs_text,
+            tool_results=tool_text,
+            reasoning_steps=reasoning_text,
+            history=history_text,
+        )
+
+        response = llm.invoke(prompt)
+        resolution = response.content if hasattr(response, "content") else str(response)
+
+        citations_text = format_citations_for_response(state.citations)
+        if citations_text:
+            resolution += citations_text
+
+        return {
+            "resolution": resolution,
+            "final_response": resolution,
+            "reasoning_steps": state.reasoning_steps + ["LLM synthesized response from all context"],
+            "history": state.history + [{"node": "react_reasoning", "method": "llm", "has_citations": bool(state.citations)}],
+        }
+    except Exception as exc:
+        logger.warning("LLM ReAct reasoning failed: %s", exc)
+        resolution = _generate_template(state)
+        return {
+            "resolution": resolution,
+            "final_response": resolution,
+            "reasoning_steps": state.reasoning_steps + [f"Template fallback: LLM error ({exc})"],
+            "history": state.history + [{"node": "react_reasoning", "method": "template", "error": str(exc)}],
+        }
+
+
+def _generate_clarification(state: AgentState) -> str:
+    """Generate a context-aware clarification question."""
+    llm = _get_llm()
+    if not llm:
+        return AMBIGUOUS_RESPONSE
+
+    try:
+        history_text = _format_conversation_history(state.conversation_history)
+        prompt = CLARIFICATION_PROMPT.format(
+            message=state.customer_message,
+            intent=state.intent,
+            history=history_text,
+        )
+        response = llm.invoke(prompt)
+        return response.content if hasattr(response, "content") else str(response)
+    except Exception:
+        return AMBIGUOUS_RESPONSE
 
 
 def _build_tool_input(state: AgentState, tool_name: str) -> Dict[str, Any]:
@@ -584,6 +880,7 @@ def human_gate_node(state: AgentState) -> Dict[str, Any]:
         tool_success=bool(state.selected_tool and state.tool_output and "error" not in state.tool_output),
         prompt_injection_detected=state.prompt_injection_detected,
         escalation_triggers=[state.escalation_reason] if state.escalation_reason else [],
+        reasoning_quality=state.reasoning_quality,
     )
 
     needs_human = confidence < 0.55 or state.escalated

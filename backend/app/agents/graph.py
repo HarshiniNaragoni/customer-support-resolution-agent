@@ -8,10 +8,12 @@ from langgraph.graph import END, StateGraph
 from app.agents.state import AgentState
 from app.agents.nodes import (
     prompt_injection_check_node,
+    conversational_check_node,
     intent_detection_node,
+    reasoning_analysis_node,
     make_retrieve_documents_node,
-    make_select_tool_node,
-    generate_resolution_node,
+    make_llm_tool_selection_node,
+    react_reasoning_node,
     human_gate_node,
     finalize_node,
 )
@@ -19,9 +21,16 @@ from app.config.logging_config import logger
 
 
 def _route_after_injection_check(state: AgentState) -> str:
-    """Route directly to resolution if injection detected, else continue pipeline."""
+    """Route to conversational check (or react_reasoning if injection detected)."""
     if state.prompt_injection_detected:
-        return "generate_resolution"
+        return "react_reasoning"
+    return "conversational_check"
+
+
+def _route_after_conversational_check(state: AgentState) -> str:
+    """If conversational input matched, go to finalize directly (skip pipeline)."""
+    if state.resolution:
+        return "finalize"
     return "intent_detection"
 
 
@@ -29,8 +38,11 @@ def build_agent_graph(db: Optional[Session] = None) -> StateGraph:
     """Builds the LangGraph resolution agent graph.
 
     Pipeline:
-        prompt_injection_check → [if injection: generate_resolution]
-                               → [else: intent_detection → retrieve_documents → select_tool → generate_resolution]
+        prompt_injection_check → [if injection: react_reasoning]
+                               → [else: conversational_check]
+                                  → [if conversational: finalize]
+                                  → [else: intent_detection → reasoning_analysis
+                                     → retrieve_documents → llm_tool_selection → react_reasoning]
                                → human_gate → finalize
 
     Args:
@@ -38,39 +50,49 @@ def build_agent_graph(db: Optional[Session] = None) -> StateGraph:
     """
     graph = StateGraph(AgentState)
 
-    # Dedicated first step: prompt injection detection
     graph.add_node("prompt_injection_check", prompt_injection_check_node)
+    graph.add_node("conversational_check", conversational_check_node)
     graph.add_node("intent_detection", intent_detection_node)
+    graph.add_node("reasoning_analysis", reasoning_analysis_node)
 
     if db:
         graph.add_node("retrieve_documents", make_retrieve_documents_node(db))
-        graph.add_node("select_tool", make_select_tool_node(db))
+        graph.add_node("llm_tool_selection", make_llm_tool_selection_node(db))
     else:
         graph.add_node("retrieve_documents", make_retrieve_documents_node(None))
-        graph.add_node("select_tool", make_select_tool_node(None))
+        graph.add_node("llm_tool_selection", make_llm_tool_selection_node(None))
 
-    graph.add_node("generate_resolution", generate_resolution_node)
+    graph.add_node("react_reasoning", react_reasoning_node)
     graph.add_node("human_gate", human_gate_node)
     graph.add_node("finalize", finalize_node)
 
     graph.set_entry_point("prompt_injection_check")
 
-    # Conditional routing: injection detected → skip RAG/tools → go to resolution
     graph.add_conditional_edges(
         "prompt_injection_check",
         _route_after_injection_check,
         {
-            "generate_resolution": "generate_resolution",
+            "react_reasoning": "react_reasoning",
+            "conversational_check": "conversational_check",
+        },
+    )
+
+    graph.add_conditional_edges(
+        "conversational_check",
+        _route_after_conversational_check,
+        {
+            "finalize": "finalize",
             "intent_detection": "intent_detection",
         },
     )
 
-    graph.add_edge("intent_detection", "retrieve_documents")
-    graph.add_edge("retrieve_documents", "select_tool")
-    graph.add_edge("select_tool", "generate_resolution")
-    graph.add_edge("generate_resolution", "human_gate")
+    graph.add_edge("intent_detection", "reasoning_analysis")
+    graph.add_edge("reasoning_analysis", "retrieve_documents")
+    graph.add_edge("retrieve_documents", "llm_tool_selection")
+    graph.add_edge("llm_tool_selection", "react_reasoning")
+    graph.add_edge("react_reasoning", "human_gate")
     graph.add_edge("human_gate", "finalize")
     graph.add_edge("finalize", END)
 
-    logger.info("Agent graph built successfully.")
+    logger.info("Agent graph built successfully (with conversational check + LLM pipeline).")
     return graph.compile()

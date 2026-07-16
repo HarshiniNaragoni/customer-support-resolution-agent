@@ -13,6 +13,7 @@ def calculate_confidence(
     tool_success: bool,
     prompt_injection_detected: bool,
     escalation_triggers: List[str],
+    reasoning_quality: float = 0.0,
 ) -> float:
     """Calculate overall confidence score between 0 and 1.
 
@@ -20,6 +21,7 @@ def calculate_confidence(
     - Intent certainty (0-1): How confident the intent classifier was
     - Retrieval quality (0-1): Whether relevant documents were found
     - Tool success (0-1): Whether the selected tool executed successfully
+    - Reasoning quality (0-1): Quality of LLM chain-of-thought reasoning
     - Penalties: prompt injection, escalation triggers lower confidence
 
     Returns:
@@ -27,16 +29,16 @@ def calculate_confidence(
     """
     score = 0.0
 
-    # Prompt injection: force very low confidence regardless of other signals
     if prompt_injection_detected:
         score = 0.05
         logger.info("Confidence: %.2f (prompt injection detected - forced low)", score)
         return round(score, 2)
 
     weights = {
-        "intent": 0.35,
-        "retrieval": 0.30,
-        "tool": 0.25,
+        "intent": 0.30,
+        "retrieval": 0.25,
+        "tool": 0.20,
+        "reasoning": 0.15,
         "safety": 0.10,
     }
 
@@ -49,17 +51,21 @@ def calculate_confidence(
     tool_score = _calculate_tool_score(tool_output, tool_success)
     score += tool_score * weights["tool"]
 
+    reasoning_score = max(0.0, min(1.0, reasoning_quality))
+    score += reasoning_score * weights["reasoning"]
+
     safety_score = _calculate_safety_score(prompt_injection_detected, escalation_triggers)
     score += safety_score * weights["safety"]
 
     score = max(0.0, min(1.0, score))
 
     logger.info(
-        "Confidence: %.2f (intent=%.2f, retrieval=%.2f, tool=%.2f, safety=%.2f)",
+        "Confidence: %.2f (intent=%.2f, retrieval=%.2f, tool=%.2f, reasoning=%.2f, safety=%.2f)",
         score,
         intent_score,
         retrieval_score,
         tool_score,
+        reasoning_score,
         safety_score,
     )
 

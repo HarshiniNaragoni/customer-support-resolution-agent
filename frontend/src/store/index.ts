@@ -7,6 +7,8 @@ interface AppState {
   chatMessages: ChatMessage[];
   addChatMessage: (msg: ChatMessage) => void;
   clearChat: () => void;
+  sessionId: string;
+  setSessionId: (id: string) => void;
   sidebarOpen: boolean;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
@@ -24,7 +26,9 @@ export const useAppStore = create<AppState>((set) => ({
   chatMessages: [],
   addChatMessage: (msg) =>
     set((s) => ({ chatMessages: [...s.chatMessages, msg] })),
-  clearChat: () => set({ chatMessages: [] }),
+  clearChat: () => set({ chatMessages: [], sessionId: "" }),
+  sessionId: "",
+  setSessionId: (id) => set({ sessionId: id }),
   sidebarOpen: true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),

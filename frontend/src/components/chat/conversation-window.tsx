@@ -133,7 +133,7 @@ function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: (
 }
 
 export function ConversationWindow() {
-  const { chatMessages, addChatMessage, clearChat, selectedTicket, setLastAgentResponse } = useAppStore();
+  const { chatMessages, addChatMessage, clearChat, selectedTicket, setLastAgentResponse, sessionId, setSessionId } = useAppStore();
   const invokeAgent = useInvokeAgent();
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -168,7 +168,12 @@ export function ConversationWindow() {
         customer_name: selectedTicket?.customer_name || "Guest",
         customer_email: selectedTicket?.customer_email || "",
         ticket_id: selectedTicket?.ticket_id || "",
+        session_id: sessionId || undefined,
       });
+
+      if (response.session_id && response.session_id !== sessionId) {
+        setSessionId(response.session_id);
+      }
 
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(),
@@ -189,7 +194,7 @@ export function ConversationWindow() {
       };
       addChatMessage(errorMsg);
     }
-  }, [input, invokeAgent, selectedTicket, addChatMessage, setLastAgentResponse]);
+  }, [input, invokeAgent, selectedTicket, addChatMessage, setLastAgentResponse, sessionId, setSessionId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {

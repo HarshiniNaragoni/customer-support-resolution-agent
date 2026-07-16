@@ -35,3 +35,14 @@ class AgentState(BaseModel):
     injection_patterns: List[str] = Field(default_factory=list)
 
     history: List[Dict[str, Any]] = Field(default_factory=list)
+
+    # --- LLM reasoning fields ---
+    reasoning_steps: List[str] = Field(default_factory=list)
+    tool_selection_reasoning: str = ""
+    needs_clarification: bool = False
+    clarification_question: str = ""
+    reasoning_quality: float = 0.0
+
+    # --- Conversation memory ---
+    conversation_history: List[Dict[str, str]] = Field(default_factory=list)
+    session_id: str = ""

@@ -117,6 +117,7 @@ def invoke_agent(data: AgentInvokeRequest, db: Session = Depends(get_db)):
             customer_email=data.customer_email,
             customer_name=data.customer_name,
             ticket_id=data.ticket_id,
+            session_id=data.session_id,
         )
     except Exception as exc:
         logger.error("Agent invocation failed: %s", exc)

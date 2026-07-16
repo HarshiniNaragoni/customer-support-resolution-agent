@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,28 @@ from app.agents.citations import format_citations_for_audit
 from app.config.logging_config import logger
 from app.models.audit import AuditLogModel
 from app.models.ticket import TicketModel
+
+
+class ConversationMemory:
+    """In-memory conversation store keyed by session_id."""
+
+    _store: Dict[str, List[Dict[str, str]]] = {}
+
+    @classmethod
+    def get_history(cls, session_id: str) -> List[Dict[str, str]]:
+        return cls._store.get(session_id, [])
+
+    @classmethod
+    def add_turn(cls, session_id: str, role: str, content: str) -> None:
+        if session_id not in cls._store:
+            cls._store[session_id] = []
+        cls._store[session_id].append({"role": role, "content": content})
+        if len(cls._store[session_id]) > 20:
+            cls._store[session_id] = cls._store[session_id][-20:]
+
+    @classmethod
+    def clear(cls, session_id: str) -> None:
+        cls._store.pop(session_id, None)
 
 
 class AgentService:
@@ -25,17 +47,25 @@ class AgentService:
         customer_email: str = "",
         customer_name: str = "",
         ticket_id: str = "",
+        session_id: str = "",
     ) -> Dict[str, Any]:
         logger.info("AgentService: Invoking agent for message: %s", customer_message[:100])
 
+        if not session_id:
+            session_id = str(uuid.uuid4())
+
         if not ticket_id:
             ticket_id = self._create_ticket(customer_message, customer_email, customer_name)
+
+        conversation_history = ConversationMemory.get_history(session_id)
 
         initial_state = AgentState(
             ticket_id=ticket_id,
             customer_message=customer_message,
             customer_email=customer_email,
             customer_name=customer_name,
+            session_id=session_id,
+            conversation_history=conversation_history,
         )
 
         try:
@@ -51,7 +81,11 @@ class AgentService:
                 escalated=True,
                 confidence=0.0,
                 escalation_reason="Graph execution error",
+                session_id=session_id,
             )
+
+        ConversationMemory.add_turn(session_id, "customer", customer_message)
+        ConversationMemory.add_turn(session_id, "agent", final_state.final_response or final_state.resolution)
 
         try:
             self._update_ticket(final_state)
@@ -72,6 +106,10 @@ class AgentService:
             "citations": final_state.citations,
             "prompt_injection_detected": final_state.prompt_injection_detected,
             "injection_patterns": final_state.injection_patterns,
+            "reasoning_steps": final_state.reasoning_steps,
+            "tool_selection_reasoning": final_state.tool_selection_reasoning,
+            "needs_clarification": final_state.needs_clarification,
+            "session_id": session_id,
         }
 
     def _create_ticket(
